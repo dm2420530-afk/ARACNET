@@ -150,7 +150,7 @@ void tiempoSeguridad(){
   parpadeoLED();
   if(tiempoTranscurrido >= tRegresivo){
     estadoActual = GO;
-    Serial.print("EMPEZO!!!!");  
+    Serial.println("EMPEZO!!!!");  
     
   }
 }
