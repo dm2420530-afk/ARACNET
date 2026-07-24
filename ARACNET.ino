@@ -245,7 +245,7 @@ void PID(){
 
   error_anterior = error;  //Se retroalimenta.
 
-  //0.3 es una variable para AJUSTAR.
+  //0.3 es una constante para AJUSTAR.
   bool alineado = ((sensores_activados > 0) && (abs(error)) < 0.3);  // preguntamos si el enemigo esta delante, aun si detectan los otros sensores por eso el abs() para que entre un error sin signo.
   int velocidadCrucero = alineado ? 240 : velocidad_BASE;  // preguntamos con un Op.ternario que si la variable "alineado" es TRUE o FALSE. TRUE = 240, FALSE = velocidad_BASE.
   velocidadActual = velocidadActual + (velocidadCrucero - velocidadActual) * 0.3;
@@ -309,6 +309,7 @@ void PID(){
   salidaPID = P + I + D;  //Resultado del PID, que luega va a los motores.
 
   error_anterior = error;  //Se retroalimenta.
+  //0.3 es una constante AJUSTABLE.
   bool alineado = ((sensores_activados > 0) && (abs(error)) < 0.3);  // preguntamos si el enemigo esta delante, aun si detectan los otros sensores por eso el abs() para que entre un error sin signo.
   int velocidadCrucero = alineado ? 240 : velocidad_BASE;  // preguntamos con un Op.ternario que si la variable "alineado" es TRUE o FALSE. TRUE = 240, FALSE = velocidad_BASE.
   velocidadActual = velocidadActual + (velocidadCrucero - velocidadActual) * 0.3;
