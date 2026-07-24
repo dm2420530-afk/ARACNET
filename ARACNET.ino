@@ -32,7 +32,7 @@ IRrecv irrecv(control);
 decode_results codigo;
 int lecturaBorde = 0;
 
-int limite_Objetivo = 100; //-MODIFICAR-
+int limite_Objetivo = 125; //-MODIFICAR-
 const int velocidad_BASE = 40; //-MODIFICAR-
 
 float valor_HCSR04 = 2.0, valor_d80nk = 1.0; //-MODIFICAR-
@@ -47,15 +47,15 @@ float error_anterior = 0;
 float integral = 0;
 float derivada = 0;
 float salidaPID = 0;
+float velocidadActual = 0;
 float ultima_direccion = 0;
+float direccionInicialIZQ = 1.0; //-MODIFICAR- 
 
 bool bandera_SensorIzq = 0;
 bool bandera_SensorAnguloIZQ = 0;
 bool bandera_SensorCen = 0;
 bool bandera_SensorAnguloDER = 0;
 bool bandera_SensorDer = 0;
-bool bordeIZQ = 0;
-bool bordeDER = 0;
 int sensores_activados = 0;
 
 //pasaje de tiempo a distacia
@@ -65,7 +65,7 @@ long LecturaDistancia (int trigPin, int echoPin) {
   digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
-  long duracion = pulseIn(echoPin, HIGH, 4500);
+  long duracion = pulseIn(echoPin, HIGH, 7000); // 120cm max
   long distancia = duracion * 0.034 / 2;
   return distancia;
 }
@@ -76,6 +76,7 @@ void setup() {
   pinMode(js200xf, INPUT); pinMode(d80_1, INPUT); pinMode(d80_2, INPUT); pinMode(linea1, INPUT); pinMode(linea2, INPUT); pinMode(control, INPUT);
   pinMode(motorA1, OUTPUT); pinMode(motorA2, OUTPUT); pinMode(motorB1, OUTPUT); pinMode(motorB2, OUTPUT); pinMode(pwmMotorA, OUTPUT); pinMode(pwmMotorB, OUTPUT);
   pinMode(TRIG_izq, OUTPUT); pinMode(ECHO_izq, INPUT); pinMode(TRIG_der, OUTPUT); pinMode(ECHO_der, INPUT);
+  velocidadActual = velocidad_BASE;
 }
 void loop() {
   lecturaControl();
@@ -178,11 +179,11 @@ void ESTRATEGIAS(){
     break;
     
     case 2:
-    //defensa();
+      //PID_IZQ();
     break;
 
     case 3:
-    //busqueda();
+      //TEST();
     break;
     
     case 4:
@@ -191,6 +192,134 @@ void ESTRATEGIAS(){
   }
 }
 void PID(){
+  //priorizamos las lecturas del borde*
+  bool bordeLinea1 = (digitalRead(linea1) == lecturaBorde); // borde izquierdo
+  bool bordeLinea2 = (digitalRead(linea2) == lecturaBorde); // borde derecho
+  
+  if(bordeLinea1 || bordeLinea2){
+    esquivarLinea(bordeLinea1, bordeLinea2);
+    return;
+  }
+
+  //comenzamos leyendo las distancias de cada sensor del robot
+  int distanciaIzq = LecturaDistancia(TRIG_izq, ECHO_izq);
+  int distanciaANGULO_1 = digitalRead(d80_1); //angulo de 35° izquierdo
+  int distanciaCen = digitalRead(js200xf); 
+  int distanciaDer = LecturaDistancia(TRIG_der, ECHO_der);
+  int distanciaANGULO_2 = digitalRead(d80_2); //angulo de 35° derecho
+
+  //preguntamos si detectan dentro del limite propuesto. *un SI es = 1, un NO = 0*
+  bandera_SensorIzq = (distanciaIzq <= limite_Objetivo);
+  bandera_SensorAnguloIZQ = (distanciaANGULO_1 == 0);
+  bandera_SensorCen = (distanciaCen == 0);
+  bandera_SensorAnguloDER = (distanciaANGULO_2 == 0);
+  bandera_SensorDer = (distanciaDer <= limite_Objetivo);
+  
+  error = (-valor_HCSR04 * bandera_SensorIzq) + (-valor_d80nk * bandera_SensorAnguloIZQ) + (0.0 * bandera_SensorCen) + (valor_d80nk * bandera_SensorAnguloDER) + (valor_HCSR04 * bandera_SensorDer);
+  sensores_activados = bandera_SensorIzq + bandera_SensorAnguloIZQ + bandera_SensorCen + bandera_SensorAnguloDER + bandera_SensorDer;
+
+  //LOGICA de memoria de deteccion//
+  if(sensores_activados > 0){         //promediamos el error entre los sensores, y guardamos los datos.
+    error = error / sensores_activados;
+    ultima_direccion = error;
+  } else {  // situacion en cuando no se detecta nada en ningun sensor.
+    if (ultima_direccion > 0){ // si el error guardado era postivo, se reemplaza por el de memoria mas alto (va a la izquierda)
+      error = valor_Memoria;
+    } else if (ultima_direccion < 0){ //si el error guardado era negativo, se reemplazo con uno negativo mas alto (va a la derecha)
+      error = -valor_Memoria;
+    } else {
+      error = 0;
+    }
+  }
+
+  float P = kp * error;     //Parte Proporcional
+  
+  integral = integral + error;
+  integral = constrain(integral, -50, 50); //-MODIFICAR-
+  float I = ki * integral;    //Parte Integral
+
+  derivada = error - error_anterior;
+  float D = kd * derivada;   //Parte derivativa.
+
+  salidaPID = P + I + D;  //Resultado del PID, que luega va a los motores.
+
+  error_anterior = error;  //Se retroalimenta.
+
+  //0.3 es una variable para AJUSTAR.
+  bool alineado = ((sensores_activados > 0) && (abs(error)) < 0.3);  // preguntamos si el enemigo esta delante, aun si detectan los otros sensores por eso el abs() para que entre un error sin signo.
+  int velocidadCrucero = alineado ? 240 : velocidad_BASE;  // preguntamos con un Op.ternario que si la variable "alineado" es TRUE o FALSE. TRUE = 240, FALSE = velocidad_BASE.
+  velocidadActual = velocidadActual + (velocidadCrucero - velocidadActual) * 0.3;
+
+  int velocidadMotorIzq = velocidadActual - salidaPID;
+  int velocidadMotorDer = velocidadActual + salidaPID;
+
+  motores(velocidadMotorDer, velocidadMotorIzq);
+  delay(1);
+}
+/*void PID_IZQ(){
+  //priorizamos las lecturas del borde*
+  bool bordeLinea1 = (digitalRead(linea1) == lecturaBorde); // borde izquierdo
+  bool bordeLinea2 = (digitalRead(linea2) == lecturaBorde); // borde derecho
+  
+  if(bordeIZQ || bordeDER){
+    esquivarLinea(bordeLinea1, bordeLinea2);
+    return;
+  }
+
+  //comenzamos leyendo las distancias de cada sensor del robot
+  int distanciaIzq = LecturaDistancia(TRIG_der, ECHO_der);
+  int distanciaANGULO_1 = digitalRead(d80_1); //angulo de 35° izquierdo
+  int distanciaCen = digitalRead(js200xf); 
+  int distanciaDer = LecturaDistancia(TRIG_izq, ECHO_izq);
+  int distanciaANGULO_2 = digitalRead(d80_2); //angulo de 35° derecho
+
+  //preguntamos si detectan dentro del limite propuesto. *un SI es = 1, un NO = 0*
+  bandera_SensorIzq = (distanciaIzq <= limite_Objetivo);
+  bandera_SensorAnguloIZQ = (distanciaANGULO_1 == 0);
+  bandera_SensorCen = (distanciaCen == 0);
+  bandera_SensorAnguloDER = (distanciaANGULO_2 == 0);
+  bandera_SensorDer = (distanciaDer <= limite_Objetivo);
+  
+  error = (-valor_HCSR04 * bandera_SensorIzq) + (-valor_d80nk * bandera_SensorAnguloIZQ) + (0.0 * bandera_SensorCen) + (valor_d80nk * bandera_SensorAnguloDER) + (valor_HCSR04 * bandera_SensorDer);
+  sensores_activados = bandera_SensorIzq + bandera_SensorAnguloIZQ + bandera_SensorCen + bandera_SensorAnguloDER + bandera_SensorDer;
+
+  //LOGICA de memoria de deteccion//
+  if(sensores_activados > 0){         //promediamos el error entre los sensores, y guardamos los datos.
+    error = error / sensores_activados;
+    ultima_direccion = error;
+  } else {  // situacion en cuando no se detecta nada en ningun sensor.
+    if (ultima_direccion > 0){ // si el error guardado era postivo, se reemplaza por el de memoria mas alto (va a la izquierda)
+      error = valor_Memoria;
+    } else if (ultima_direccion < 0){ //si el error guardado era negativo, se reemplazo con uno negativo mas alto (va a la derecha)
+      error = -valor_Memoria;
+    } else {
+      error = valor_Memoria * direccionInicialIZQ;
+    }
+  }
+
+  float P = kp * error;     //Parte Proporcional
+  
+  integral = integral + error;
+  integral = constrain(integral, -50, 50); //-MODIFICAR-
+  float I = ki * integral;    //Parte Integral
+
+  derivada = error - error_anterior;
+  float D = kd * derivada;   //Parte derivativa.
+
+  salidaPID = P + I + D;  //Resultado del PID, que luega va a los motores.
+
+  error_anterior = error;  //Se retroalimenta.
+  bool alineado = ((sensores_activados > 0) && (abs(error)) < 0.3);  // preguntamos si el enemigo esta delante, aun si detectan los otros sensores por eso el abs() para que entre un error sin signo.
+  int velocidadCrucero = alineado ? 240 : velocidad_BASE;  // preguntamos con un Op.ternario que si la variable "alineado" es TRUE o FALSE. TRUE = 240, FALSE = velocidad_BASE.
+  velocidadActual = velocidadActual + (velocidadCrucero - velocidadActual) * 0.3;
+
+  int velocidadMotorIzq = velocidadActual - salidaPID;
+  int velocidadMotorDer = velocidadActual + salidaPID;
+
+  motores(velocidadMotorDer, velocidadMotorIzq);
+  delay(1);
+}*/
+/*void TEST(){
   //priorizamos las lecturas del borde*
   bool bordeLinea1 = (digitalRead(linea1) == lecturaBorde); // borde izquierdo
   bool bordeLinea2 = (digitalRead(linea2) == lecturaBorde); // borde derecho
@@ -244,12 +373,13 @@ void PID(){
 
   error_anterior = error; // se retroalimenta.
 
-  int velocidadMotorIzq = velocidad_BASE - salidaPID;
-  int velocidadMotorDer = velocidad_BASE + salidaPID;
+  int velocidadMotorIzq = - salidaPID;
+  int velocidadMotorDer = + salidaPID;
 
   motores(velocidadMotorDer, velocidadMotorIzq);
   delay(1);
-}
+}*/
+
 void motores(int velocidad_A, int velocidad_B){
   //limitar la velocidad de los Titan
 
@@ -297,4 +427,5 @@ void esquivarLinea(bool izq, bool der){
 
   integral = 0; //se resetean los valores para el PID
   error_anterior = 0;
+  velocidadActual = velocidad_BASE;
 }
