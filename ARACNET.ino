@@ -10,17 +10,17 @@
 #define boton3 0x1CE38877    // estrategia 3
 #define boton4 0x1CE3807F   // estrategia 4
 //leds, buzzer y control
-int led1 = A2, led2 = 12, led3 = 13;
-int buzzer = A5, control = A1;
+int led1 = 4, led2 = 13;
+int buzzer = 11, control = A0;
 //Sensores
-int TRIG_izq = 0, ECHO_izq = 0;  
-int TRIG_der = 0, ECHO_der =0;
-int js200xf = A3; 
-int d80_1 = 0, d80_2 = 0;   // d80_1 = izquierda        d80_2 = derecha
-int linea1 = 0, linea2 = 0; // linea1 = izquierda         linea2 = derecha
-//Motores
-int motorA1 = 10, motorA2 = 9, pwmMotorA = 0; //sigue el orden del diagrama.
-int motorB1 = 3, motorB2 = 11, pwmMotorB = 0;
+int TRIG_izq = 7, ECHO_izq = 8;  
+int TRIG_der = A4, ECHO_der =A5;
+int js200xf = A1; 
+int d80_1 = A2, d80_2 = A3;   // d80_1 = izquierda        d80_2 = derecha
+int linea1 = 2, linea2 = 3; // linea1 = izquierda         linea2 = derecha
+//Motores TITAN
+int LPWM_izq = 5, RPWM_izq= 6; //sigue el orden del diagrama.
+int LPWM_der = 9, RPWM_der = 10;
 
 //parametros y variables
 const unsigned long tRegresivo = 5000; //para la cuenta regresiva
@@ -72,9 +72,9 @@ long LecturaDistancia (int trigPin, int echoPin) {
 void setup() {
   Serial.begin(9600);
   irrecv.enableIRIn();
-  pinMode(led1, OUTPUT); pinMode(led2, OUTPUT); pinMode(led3, OUTPUT); pinMode(buzzer, OUTPUT); 
+  pinMode(led1, OUTPUT); pinMode(led2, OUTPUT); pinMode(buzzer, OUTPUT); 
   pinMode(js200xf, INPUT); pinMode(d80_1, INPUT); pinMode(d80_2, INPUT); pinMode(linea1, INPUT); pinMode(linea2, INPUT); pinMode(control, INPUT);
-  pinMode(motorA1, OUTPUT); pinMode(motorA2, OUTPUT); pinMode(motorB1, OUTPUT); pinMode(motorB2, OUTPUT); pinMode(pwmMotorA, OUTPUT); pinMode(pwmMotorB, OUTPUT);
+  pinMode(LPWM_izq, OUTPUT); pinMode(RPWM_izq, OUTPUT); pinMode(LPWM_der, OUTPUT); pinMode(RPWM_der, OUTPUT); 
   pinMode(TRIG_izq, OUTPUT); pinMode(ECHO_izq, INPUT); pinMode(TRIG_der, OUTPUT); pinMode(ECHO_der, INPUT);
   velocidadActual = velocidad_BASE;
 }
@@ -118,7 +118,11 @@ void lecturaControl(){
         }
         if (valor == boton3){
           estrategiaSeleccionada = 3;
-          
+          digitalWrite(led1, LOW); digitalWrite(led2, LOW); digitalWrite(buzzer, HIGH);
+          delay(50);
+          digitalWrite(led1, HIGH); digitalWrite(led2, HIGH); digitalWrite(buzzer, LOW);
+          delay(50); digitalWrite(buzzer, HIGH);
+          delay(100); digitalWrite(buzzer, LOW);
         }
         if (valor == boton4){
           estrategiaSeleccionada = 4;
@@ -135,8 +139,7 @@ void lecturaControl(){
           Serial.println("ya empieza");
         }
     }else if (valor == boton_OFF){
-        estadoActual = ESPERA;
-        estrategiaSeleccionada = 0;
+        estadoActual = CONFIGURACION;
         STOP();
           digitalWrite(led1, HIGH); digitalWrite(led2, HIGH);
           digitalWrite(buzzer, HIGH); delay(50); digitalWrite(buzzer, LOW); 
@@ -165,13 +168,16 @@ void parpadeoLED(){
     estado = !estado;
     digitalWrite(led1, estado);
     digitalWrite(led2, estado);
-    digitalWrite(led3, estado);
+
     tAnterior = millis();
   }
 }
 void STOP(){
-  analogWrite(pwmMotorA, 0); 
-  analogWrite(pwmMotorB, 0);
+  digitalWrite(LPWM_izq, HIGH);
+  digitalWrite(RPWM_izq, HIGH);
+  //frenamos en seco ambos Motores
+  digitalWrite(LPWM_der, HIGH);
+  digitalWrite(RPWM_der, HIGH);
 }
 void ESTRATEGIAS(){
   switch(estrategiaSeleccionada){
@@ -389,28 +395,26 @@ void motores(int velocidad_A, int velocidad_B){
 
   //Motor Derecho
   if(velocidad_A > 0){
-    digitalWrite(motorA1, HIGH);
-    digitalWrite(motorA2, LOW);
-    analogWrite(pwmMotorA, velocidad_A);
+    digitalWrite(LPWM_der, LOW);
+    analogWrite(RPWM_der, velocidad_A);
   } else if (velocidad_A < 0){
-    digitalWrite(motorA1, LOW);
-    digitalWrite(motorA2, HIGH);
-    analogWrite(pwmMotorA, -velocidad_A);
+    analogWrite(LPWM_der, -velocidad_A);
+    digitalWrite(RPWM_der, LOW);
   } else {
-    analogWrite(pwmMotorA, 0);
+    digitalWrite(LPWM_der, LOW);
+    digitalWrite(RPWM_der, LOW);
   }
 
   //Motor Izquirdo
-  if(velocidad_B >0){
-    digitalWrite(motorB1, HIGH);
-    digitalWrite(motorB2, LOW);
-    analogWrite(pwmMotorB, velocidad_B);
-  } else if (velocidad_B < 0){
-    digitalWrite(motorB1, LOW);
-    digitalWrite(motorB2, HIGH);
-    analogWrite(pwmMotorB, -velocidad_B);
+  if(velocidad_B > 0){
+    digitalWrite(LPWM_izq, LOW);
+    analogWrite(RPWM_izq, velocidad_B);
+  } else if (velocidad_A < 0){
+    analogWrite(LPWM_izq, -velocidad_B);
+    digitalWrite(RPWM_izq, LOW);
   } else {
-    analogWrite(pwmMotorB, 0);
+    digitalWrite(LPWM_izq, LOW);
+    digitalWrite(RPWM_izq, LOW);
   }
 }
 void esquivarLinea(bool izq, bool der){
