@@ -3,12 +3,12 @@
 ----------------------------------------------------------------*/
 #include <IRremote.h> //libreria para el control remoto V.2.6!!
 //:botones
-#define boton_ON 0xFFA25D  // encendido
-#define boton_OFF 0xFF629D  // apagado
-#define boton1 0xFF30CF    // estrategia 1
-#define boton2 0xFF18E7    // estrategia 2
-#define boton3 0xFF7A85    // estrategia 3
-#define boton4 0xFF10EF    // estrategia 4
+#define boton_ON 0x1CE348B7  // encendido
+#define boton_OFF 0x1CE3C837  // apagado
+#define boton1 0x1CE39867    // estrategia 1
+#define boton2 0x1CE330CF    // estrategia 2
+#define boton3 0x1CE38877    // estrategia 3
+#define boton4 0x1CE3807F   // estrategia 4
 //leds, buzzer y control
 int led1 = A2, led2 = 12, led3 = 13;
 int buzzer = A5, control = A1;
