@@ -3,7 +3,7 @@
 ----------------------------------------------------------------*/
 //leds, buzzer y control
 int led1 = 4, led2 = 13;
-int buzzer = 11, boton = 12, botonDIP = A6;
+int buzzer = 11, boton = 12, botonDIP = A6; // boton es 
 //Sensores
 int TRIG_izq = 7, ECHO_izq = 8;
 int TRIG_der = A4, ECHO_der = A5;
@@ -21,8 +21,8 @@ enum ESTADO { ESPERA,
               CONFIGURACION,
               REGRESIVO,
               GO };
-ESTADO estadoActual = ESPERA;
-int estrategiaSeleccionada = 0;
+ESTADO estadoActual = ESPERA; // -EN ULTIMO CASO---> cambia a REGRESIVO
+int estrategiaSeleccionada = 0; // -EN ULTIMO CASO---> elegi la estrategia 1,2,3,4....
 bool botonAnterior = HIGH;
 
 int lecturaBorde = 0;
@@ -214,11 +214,11 @@ void ESTRATEGIAS() {
       break;
 
     case 3:
-      //TEST();
+      TEST_pid();
       break;
 
     case 4:
-      //.....();
+      test_sensores();
       break;
   }
 }
@@ -350,7 +350,7 @@ void PID() {
   motores(velocidadMotorDer, velocidadMotorIzq);
   delay(1);
 }*/
-/*void TEST(){
+/*void TEST_pid(){
   //priorizamos las lecturas del borde*
   bool bordeLinea1 = (digitalRead(linea1) == lecturaBorde); // borde izquierdo
   bool bordeLinea2 = (digitalRead(linea2) == lecturaBorde); // borde derecho
@@ -457,4 +457,48 @@ void esquivarLinea(bool izq, bool der) {
   integral = 0;  //se resetean los valores para el PID
   error_anterior = 0;
   velocidadActual = velocidad_BASE;
+}
+void test_sensores(){
+  int bordeIZQ = analogRead(linea1); // Umbral entre =
+  int bordeDER = analogRead(linea2);
+
+  //-----para despues----
+  //bool bordeIZQ = (digitalRead(linea1) == lecturaBorde); // borde izquierdo
+  //bool bordeDER = (digitalRead(linea2) == lecturaBorde); // borde derecho
+
+  int distanciaIzq = LecturaDistancia(TRIG_izq, ECHO_izq);
+  int deteccionANGULO_1 = analogRead(d80_1); //angulo de 35° izquierdo
+  int deteccionCen = analogRead(js200xf); 
+  int deteccionANGULO_2 = analogRead(d80_2); //angulo de 35° derecho
+  int distanciaDer = LecturaDistancia(TRIG_der, ECHO_der);
+
+  if(distanciaIzq > 0 && distanciaIzq < limite_Objetivo){ // detecta el lado izquierdo: IZQ+D80_1
+    digitalWrite(led1, HIGH); 
+  } else if (deteccionANGULO_1 > 0 && deteccionANGULO_1 < 140){
+    digitalWrite(led1, HIGH);
+  } else { digitalWrite(led1, LOW);}
+  if(deteccionCen){ // detecta el centro: JS200xf
+    digitalWrite(led1, HIGH); digitalWrite(led2, HIGH);
+  } else {digitalWrite(led1, LOW); digitalWrite(led2, LOW);}
+  if(distanciaDer > 0 && distanciaDer < limite_Objetivo){ // detecta el lado derecho: DER+D80_2
+    digitalWrite(led2, HIGH);
+  } else if (deteccionANGULO_2 > 0 && deteccionANGULO_2 < 140){
+    digitalWrite(led2, HIGH);
+  } else { digitalWrite(led2, LOW);}
+  
+  Serial.print("IZQ: ");
+  Serial.print(distanciaIzq);
+  Serial.print(" cm |AnguloIzq: ");
+  Serial.print(deteccionANGULO_1);
+  Serial.print(" | CENTRO: ");
+  Serial.print(deteccionCen);
+  Serial.print(" | AnguloDer: ");
+  Serial.print(deteccionANGULO_2);
+  Serial.print(" | DER: ");
+  Serial.print(distanciaDer);
+  Serial.print(" cm | bordeIZQ: ");
+  Serial.print(bordeIZQ);
+  Serial.print(" | borderDer: ");
+  Serial.println(bordeDER);
+  delay(50);
 }
