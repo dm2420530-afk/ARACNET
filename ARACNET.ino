@@ -33,10 +33,10 @@ decode_results codigo;
 //int lecturaBorde = 0;
 
 int limite_Objetivo = 125; //-MODIFICAR-
-const int velocidad_BASE = 40; //-MODIFICAR-
+const int velocidad_BASE = 120; //-MODIFICAR-
 
 float valor_HCSR04 = 2.0, valor_d80nk = 1.0; //-MODIFICAR-
-float valor_Memoria = 4.0; //-MODIFICAR-
+float valor_Memoria = 2.2; //-MODIFICAR-
 
 float kp = 20;    //-MODIFICAR-
 float ki = 0;
@@ -58,23 +58,41 @@ bool bandera_SensorAnguloDER = 0;
 bool bandera_SensorDer = 0;
 int sensores_activados = 0;
 
-//pasaje de tiempo a distacia
-long LecturaDistancia (int trigPin, int echoPin) {
+//CONVERSION Y FILTRADO PARA LOS HC-SR04
+long LecturaSimple (int trigPin, int echoPin) {
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
-  long duracion = pulseIn(echoPin, HIGH, 18000); // 120cm max
-  long distancia = duracion * 0.034 / 2;
-  return distancia;
+  long duracion = pulseIn(echoPin, HIGH, 9000); // 120cm max
+  if(duracion == 0)
+    return 999;
+  return duracion * 0.034 / 2;
 }
+long LecturaDistancia(int trigPin, int echoPin){
+  long d1=LecturaSimple(trigPin,echoPin);
+  long d2=LecturaSimple(trigPin,echoPin);
+  long d3=LecturaSimple(trigPin,echoPin);
+
+  return (d1+d2+d3)/3;
+}
+long distanciaFiltradaIZQ = 0;
+long distanciaFiltradaDER = 0; 
+long filtro(long nueva, long vieja){
+  if(vieja == 0)
+    return nueva;
+
+    return vieja*0.7 + nueva*0.3;
+}
+
 void leds(){
   bool encenderLed1 = bandera_SensorIzq || bandera_SensorAnguloIZQ || bandera_SensorCen;
   bool encenderLed2 = bandera_SensorDer || bandera_SensorAnguloDER || bandera_SensorCen;
   digitalWrite(led1, encenderLed1);
   digitalWrite(led2, encenderLed2);
 }
+
 void setup() {
   Serial.begin(9600);
   irrecv.enableIRIn();
@@ -199,7 +217,7 @@ void ESTRATEGIAS(){
     break;
 
     case 3:
-      Sentido_Motor();
+      CURVA_PID(); //Sentido_Motor();
     break;
     
     case 4:
@@ -217,18 +235,18 @@ void PID(){
     return;
   }*/
   //comenzamos leyendo las distancias de cada sensor del robot
-  int distanciaIzq = LecturaDistancia(TRIG_izq, ECHO_izq);
+  int distanciaIzq = filtro(LecturaDistancia(TRIG_izq, ECHO_izq), distanciaFiltradaIZQ);
   int deteccionANGULO_1 = digitalRead(d80_1); //angulo de 35° izquierdo
   int deteccionCen = digitalRead(js200xf); 
   int deteccionANGULO_2 = digitalRead(d80_2); //angulo de 35° derecho
-  int distanciaDer = LecturaDistancia(TRIG_der, ECHO_der);
+  int distanciaDer = filtro(LecturaDistancia(TRIG_der, ECHO_der), distanciaFiltradaDER);
 
 
   //preguntamos si detectan dentro del limite propuesto. *un SI es = 1, un NO = 0*
   bandera_SensorIzq = (distanciaIzq > 0 && distanciaIzq < limite_Objetivo);
-  bandera_SensorAnguloIZQ = (deteccionANGULO_1 == 1);
-  bandera_SensorCen = (deteccionCen == 1);
-  bandera_SensorAnguloDER = (deteccionANGULO_2 == 1);
+  bandera_SensorAnguloIZQ = (deteccionANGULO_1 == 0);
+  bandera_SensorCen = (deteccionCen == 0);
+  bandera_SensorAnguloDER = (deteccionANGULO_2 == 0);
   bandera_SensorDer = (distanciaDer > 0 && distanciaDer < limite_Objetivo);
   leds();
 
@@ -259,13 +277,25 @@ void PID(){
   float D = kd * derivada;   //Parte derivativa.
 
   salidaPID = P + I + D;  //Resultado del PID, que luega va a los motores.
+  salidaPID = constrain(salidaPID, -120, 120);
+
+  Serial.print("E:");
+  Serial.print(error);
+  Serial.print("  P:");
+  Serial.print(P);
+  Serial.print("  I:");
+  Serial.print(I);
+  Serial.print("  D:");
+  Serial.print(D);
+  Serial.print("  PID:");
+  Serial.println(salidaPID);
 
   error_anterior = error;  //Se retroalimenta.
 
   //0.3 es una variable para AJUSTAR.
-  bool alineado = ((sensores_activados > 0) && (abs(error)) < 0.3);  // preguntamos si el enemigo esta delante, aun si detectan los otros sensores por eso el abs() para que entre un error sin signo.
-  int velocidadCrucero = alineado ? 240 : velocidad_BASE;  // preguntamos con un Op.ternario que si la variable "alineado" es TRUE o FALSE. TRUE = 240, FALSE = velocidad_BASE.
-  velocidadActual = velocidadActual + (velocidadCrucero - velocidadActual) * 0.3;
+  bool alineado = ((sensores_activados > 0) && (abs(error)) < 0.2);  // preguntamos si el enemigo esta delante, aun si detectan los otros sensores por eso el abs() para que entre un error sin signo.
+  int velocidadCrucero = alineado ? 150 : velocidad_BASE;  // preguntamos con un Op.ternario que si la variable "alineado" es TRUE o FALSE. TRUE = 240, FALSE = velocidad_BASE.
+  velocidadActual = velocidadActual + (velocidadCrucero - velocidadActual) * 0.2;
 
   int velocidadMotorIzq = velocidadActual - salidaPID;
   int velocidadMotorDer = velocidadActual + salidaPID;
@@ -283,17 +313,17 @@ void PID_IZQ(){
     return;*/
   
   //comenzamos leyendo las distancias de cada sensor del robot
-  int distanciaIzq = LecturaDistancia(TRIG_der, ECHO_der);
+  int distanciaIzq = filtro(LecturaDistancia(TRIG_izq, ECHO_izq), distanciaFiltradaIZQ);
   int deteccionANGULO_1 = digitalRead(d80_1); //angulo de 35° izquierdo
   int deteccionCen = digitalRead(js200xf); 
-  int distanciaDer = LecturaDistancia(TRIG_izq, ECHO_izq);
   int deteccionANGULO_2 = digitalRead(d80_2); //angulo de 35° derecho
+  int distanciaDer = filtro(LecturaDistancia(TRIG_der, ECHO_der), distanciaFiltradaDER);
 
   //preguntamos si detectan dentro del limite propuesto. *un SI es = 1, un NO = 0*
   bandera_SensorIzq = (distanciaIzq > 0 && distanciaIzq < limite_Objetivo);
-  bandera_SensorAnguloIZQ = (deteccionANGULO_1 == 1);
-  bandera_SensorCen = (deteccionCen == 1);
-  bandera_SensorAnguloDER = (deteccionANGULO_2 == 1);
+  bandera_SensorAnguloIZQ = (deteccionANGULO_1 == 0);
+  bandera_SensorCen = (deteccionCen == 0);
+  bandera_SensorAnguloDER = (deteccionANGULO_2 == 0);
   bandera_SensorDer = (distanciaDer > 0 && distanciaDer < limite_Objetivo);
   leds();
   
@@ -323,11 +353,12 @@ void PID_IZQ(){
   derivada = error - error_anterior;
   float D = kd * derivada;   //Parte derivativa.
 
-  salidaPID = P + I + D;  //Resultado del PID, que luega va a los motores.
+  salidaPID = P + I + D;  //Resultado del PID, que luega *va a los motores.
+  salidaPID = constrain(salidaPID, -120, 120);
 
   error_anterior = error;  //Se retroalimenta.
-  bool alineado = ((sensores_activados > 0) && (abs(error)) < 0.3);  // preguntamos si el enemigo esta delante, aun si detectan los otros sensores por eso el abs() para que entre un error sin signo.
-  int velocidadCrucero = alineado ? 240 : velocidad_BASE;  // preguntamos con un Op.ternario que si la variable "alineado" es TRUE o FALSE. TRUE = 240, FALSE = velocidad_BASE.
+  bool alineado = ((sensores_activados > 0) && (abs(error)) < 0.4);  // preguntamos si el enemigo esta delante, aun si detectan los otros sensores por eso el abs() para que entre un error sin signo.
+  int velocidadCrucero = alineado ? 150 : velocidad_BASE;  // preguntamos con un Op.ternario que si la variable "alineado" es TRUE o FALSE. TRUE = 240, FALSE = velocidad_BASE.
   velocidadActual = velocidadActual + (velocidadCrucero - velocidadActual) * 0.3;
 
   int velocidadMotorIzq = velocidadActual - salidaPID;
@@ -336,29 +367,77 @@ void PID_IZQ(){
   motores(velocidadMotorDer, velocidadMotorIzq);
   delay(1);
 }
-void Sentido_Motor(){
-  int velocidad_A = 150;
-  int velocidad_B = 150;
-  // Motor Derecho
-  digitalWrite(LPWM_der, LOW); // aca tendria que girar ADELANTE
-  analogWrite(RPWM_der, velocidad_A);
-  delay(2000);
-  analogWrite(LPWM_der, -velocidad_A); // aca tendria girar hacia ATRAS
-  digitalWrite(RPWM_der, LOW);
-  delay(2000);
-  digitalWrite(LPWM_der, LOW); // se detiene
-  digitalWrite(RPWM_der, LOW);
-  delay(500);
-  // Motor Izquierdo
-  digitalWrite(LPWM_izq, LOW); // aca tendria que girar ADELANTE
-  analogWrite(RPWM_izq, velocidad_B);
-  delay(2000);
-  analogWrite(LPWM_izq, -velocidad_B); // aca tendria girar hacia ATRAS
-  digitalWrite(RPWM_izq, LOW);
-  delay(2000);
-  digitalWrite(LPWM_izq, LOW); // se detiene
-  digitalWrite(RPWM_izq, LOW);
-  delay(1000);
+void CURVA_PID(){
+  int distanciaIzq = filtro(LecturaDistancia(TRIG_izq, ECHO_izq), distanciaFiltradaIZQ);
+  int deteccionANGULO_1 = digitalRead(d80_1); //angulo de 35° izquierdo
+  int deteccionCen = digitalRead(js200xf); 
+  int deteccionANGULO_2 = digitalRead(d80_2); //angulo de 35° derecho
+  int distanciaDer = filtro(LecturaDistancia(TRIG_der, ECHO_der), distanciaFiltradaDER);
+
+
+  //preguntamos si detectan dentro del limite propuesto. *un SI es = 1, un NO = 0*
+  bandera_SensorIzq = (distanciaIzq > 0 && distanciaIzq < limite_Objetivo);
+  bandera_SensorAnguloIZQ = (deteccionANGULO_1 == 0);
+  bandera_SensorCen = (deteccionCen == 0);
+  bandera_SensorAnguloDER = (deteccionANGULO_2 == 0);
+  bandera_SensorDer = (distanciaDer > 0 && distanciaDer < limite_Objetivo);
+  leds();
+
+  error = (-valor_HCSR04 * bandera_SensorIzq) + (-valor_d80nk * bandera_SensorAnguloIZQ) + (0.0 * bandera_SensorCen) + (valor_d80nk * bandera_SensorAnguloDER) + (valor_HCSR04 * bandera_SensorDer);
+  sensores_activados = bandera_SensorIzq + bandera_SensorAnguloIZQ + bandera_SensorCen + bandera_SensorAnguloDER + bandera_SensorDer;
+
+  //LOGICA de memoria de deteccion//
+  if(sensores_activados > 0){         //promediamos el error entre los sensores, y guardamos los datos.
+    error = error / sensores_activados;
+    ultima_direccion = error;
+  } else {  // situacion en cuando no se detecta nada en ningun sensor.
+    if (ultima_direccion > 0){ // si el error guardado era postivo, se reemplaza por el de memoria mas alto (va a la izquierda)
+      error = valor_Memoria;
+    } else if (ultima_direccion < 0){ //si el error guardado era negativo, se reemplazo con uno negativo mas alto (va a la derecha)
+      error = -valor_Memoria;
+    } else {
+      error = 0;
+    }
+  }
+
+  float P = kp * error;     //Parte Proporcional
+  
+  integral = integral + error;
+  integral = constrain(integral, -50, 50); //-MODIFICAR-
+  float I = ki * integral;    //Parte Integral
+
+  derivada = error - error_anterior;
+  float D = kd * derivada;   //Parte derivativa.
+
+  salidaPID = P + I + D;  //Resultado del PID, que luega va a los motores.
+  salidaPID = constrain(salidaPID, -120, 120);
+
+  error_anterior = error;  //Se retroalimenta.
+
+  //0.3 es una variable para AJUSTAR.
+  bool alineado = ((sensores_activados > 0) && (abs(error)) < 0.2);  // preguntamos si el enemigo esta delante, aun si detectan los otros sensores por eso el abs() para que entre un error sin signo.
+  int velocidadCrucero = alineado ? 150 : velocidad_BASE;  // preguntamos con un Op.ternario que si la variable "alineado" es TRUE o FALSE. TRUE = 240, FALSE = velocidad_BASE.
+  velocidadActual = velocidadActual + (velocidadCrucero - velocidadActual) * 0.2;
+
+  int velocidadMotorIzq = velocidadActual - salidaPID;
+  int velocidadMotorDer = velocidadActual + salidaPID;
+
+  Serial.print(error);
+  Serial.print(",");
+  Serial.print(P);
+  Serial.print(",");
+  Serial.print(I);
+  Serial.print(",");
+  Serial.print(D);
+  Serial.print(",");
+  Serial.print(salidaPID);
+  Serial.print(",");
+  Serial.print(velocidadMotorIzq);
+  Serial.print(",");
+  Serial.println(velocidadMotorDer);
+
+  motores(velocidadMotorDer, velocidadMotorIzq);
+  delay(1);
 }
 void test_sensores(){
   /*int bordeIZQ = analogRead(linea1); // Umbral entre =
@@ -443,4 +522,28 @@ void motores(int velocidad_A, int velocidad_B){
   integral = 0; //se resetean los valores para el PID
   error_anterior = 0;
   velocidadActual = velocidad_BASE;
+}*/
+/*void Sentido_Motor(){
+  int velocidad_A = 150;
+  int velocidad_B = 150;
+  // Motor Derecho
+  digitalWrite(LPWM_der, LOW); // aca tendria que girar ADELANTE
+  analogWrite(RPWM_der, velocidad_A);
+  delay(2000);
+  analogWrite(LPWM_der, -velocidad_A); // aca tendria girar hacia ATRAS
+  digitalWrite(RPWM_der, LOW);
+  delay(2000);
+  digitalWrite(LPWM_der, LOW); // se detiene
+  digitalWrite(RPWM_der, LOW);
+  delay(500);
+  // Motor Izquierdo
+  digitalWrite(LPWM_izq, LOW); // aca tendria que girar ADELANTE
+  analogWrite(RPWM_izq, velocidad_B);
+  delay(2000);
+  analogWrite(LPWM_izq, -velocidad_B); // aca tendria girar hacia ATRAS
+  digitalWrite(RPWM_izq, LOW);
+  delay(2000);
+  digitalWrite(LPWM_izq, LOW); // se detiene
+  digitalWrite(RPWM_izq, LOW);
+  delay(1000);
 }*/
