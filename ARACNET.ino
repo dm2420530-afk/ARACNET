@@ -7,20 +7,20 @@
 #define boton_OFF 0x1CE3C837
 #define boton1 0x1CE39867  // Estrategia 1: ATAQUE
 #define boton2 0x1CE330CF  // Estrategia 2: PID
-#define boton3 0x1CE38877  // Estrategia 3: 
+#define boton3 0x1CE38877  // Estrategia 3: SENTIDO_MOTOR
 #define boton4 0x1CE3807F  // Estrategia 4: TEST
 #define boton5 0x1CE5320F  // Salida izquierda
 #define boton6 0x1C325481  // Salida derecha
 
 int led1 = 4;
-int led2 = 13;
-int buzzer = 12;
-int control = A0;
-int js200xf = A1;
-int d80_1 = A2;  // IZQUIERDA
-int d80_2 = A3;  // DERECHA
-int linea1 = 2;  // Línea izquierda
-int linea2 = 3;  // Línea derecha
+int led2 = 12;
+int buzzer = 13;
+int control = 3;
+int js200xf = A2;
+int d80_1 = A3;  // IZQUIERDA
+int d80_2 = A1;  // DERECHA
+int linea1 = A5;  // Línea izquierda
+int linea2 = A4;  // Línea derecha
 int LPWM_izq = 5;
 int RPWM_izq = 6;
 int LPWM_der = 10;
@@ -37,28 +37,27 @@ IRrecv irrecv(control);
 decode_results codigo;
 int estrategiaSeleccionada = 0;
 
-const int velocidad_BASE = 180;
-float kp = 26;
+const int velocidad_BASE = 200;
+float kp = 12;
 float ki = 0;
-float kd = 20;
+float kd = 16;
 
 float posicion = 10;
 float proporcional = 0;
 float integral = 0;
 float derivativo = 0;
-
 float proporcional_pasado = 0;
 float salida_control = 0;
 
 int last_value = 10;
-
+int sensores_values [3];
+int num_Sensors = 3;
 bool bandera_SensorIzq = 0;
 bool bandera_SensorCen = 0;
 bool bandera_SensorDer = 0;
 int s1 = 0;
 int s2 = 0;
 int s3 = 0;
-int sensores_activados = 0;
 
 void setup() {
   Serial.begin(9600);
@@ -84,9 +83,11 @@ void loop() {
     case ESPERA:
       digitalWrite(led1, LOW);
       digitalWrite(led2, LOW);
+      leds();
       break;
 
     case CONFIGURACION:
+      leds();
       break;
 
     case REGRESIVO:
@@ -107,37 +108,44 @@ void lecturaControl() {
         if (valor == boton1) {
           estrategiaSeleccionada = 1;
           digitalWrite(led1, HIGH);
-          digitalWrite(led2, LOW);
           digitalWrite(buzzer, HIGH);
           delay(200);
           digitalWrite(buzzer, LOW);
+          digitalWrite(led2, LOW);
+          digitalWrite(led1, HIGH);
         }
         if (valor == boton2) {
           estrategiaSeleccionada = 2;
           digitalWrite(led1, LOW);
-          digitalWrite(led2, HIGH);
           digitalWrite(buzzer, HIGH);
           delay(100);
           digitalWrite(buzzer, LOW);
+          digitalWrite(led2, HIGH);
           digitalWrite(buzzer, HIGH);
           delay(100);
           digitalWrite(buzzer, LOW);
         }
         if (valor == boton3) {
           estrategiaSeleccionada = 3;
+          digitalWrite(led1, LOW);
+          digitalWrite(led2, LOW);
+          digitalWrite(buzzer, HIGH);
+          delay(50);
           digitalWrite(led1, HIGH);
           digitalWrite(led2, HIGH);
+          digitalWrite(buzzer, LOW);
+          delay(50);
           digitalWrite(buzzer, HIGH);
           delay(100);
           digitalWrite(buzzer, LOW);
         }
         if (valor == boton4) {
           estrategiaSeleccionada = 4;
-          digitalWrite(led1, LOW);
-          digitalWrite(led2, LOW);
-          digitalWrite(buzzer, HIGH);
-          delay(100);
-          digitalWrite(buzzer, LOW);
+          digitalWrite(led1, LOW); digitalWrite(led2, LOW); digitalWrite(buzzer, HIGH);
+          delay(50);
+          digitalWrite(led1, HIGH); digitalWrite(led2, HIGH); digitalWrite(buzzer, LOW);
+          delay(100); digitalWrite(buzzer, HIGH); digitalWrite(led1, LOW); digitalWrite(led2, LOW);
+          delay(100); digitalWrite(buzzer, LOW); digitalWrite(led1, HIGH); digitalWrite(led2, HIGH);
         }
         if (valor == boton5) {
           ladoArranque = -1;
@@ -176,6 +184,13 @@ void lecturaControl() {
       digitalWrite(buzzer, LOW);
       digitalWrite(led1, LOW);
       digitalWrite(led2, LOW);
+      digitalWrite(buzzer, HIGH);
+      delay(50);
+      digitalWrite(buzzer, LOW);
+      delay(50);
+      digitalWrite(buzzer, HIGH);
+          delay(100);
+          digitalWrite(buzzer, LOW);
       Serial.println("ROBOT DETENIDO");
     }
     irrecv.resume();
@@ -279,9 +294,16 @@ void tracking3() {
   leds();
 
   posicion = ponderacion();
+  // posicion tiene valores entre 0 a 20.. 
+  // si es 0 = Esta a la izquierda, si es 10 = Esta de frente, si es 20 = esta a la derecha.
 
   proporcional = posicion - 10;
+  // es una resta que determina el el estado de los sensores. 
+  // Si la resta queda NEGATIVA = deteccion a la izquierda
+  // Si la resta es 0 = deteccion centrada. 
+  // Si la resta en POSITIVA = deteccion a la derecha. 
   
+  // el ITerm, en este caso no se utiliza...
   integral = integral + proporcional_pasado;
   int ITerm = integral * ki;
 
@@ -291,92 +313,67 @@ void tracking3() {
   derivativo = proporcional - proporcional_pasado;
 
   salida_control = (proporcional * kp) + (derivativo * kd) + ITerm;
+  //salida_control puede tomar valores negativos como positivos para asi, sumar o restar la velocidad_BASE. 
+  //en caso para que necesite dar pequenas correciones, para encontrar al obejtivo
 
   if(salida_control > velocidad_BASE) salida_control = velocidad_BASE;
   if(salida_control < -velocidad_BASE) salida_control = -velocidad_BASE;
 
-  proporcional_pasado = proporcional;
-
-  if(salida_control < 0) {
-    motores(velocidad_BASE, velocidad_BASE + salida_control);
-  } else if (salida_control > 0){
-    motores(velocidad_BASE - salida_control, velocidad_BASE);
-  } else {
-    motores(velocidad_BASE, velocidad_BASE);
+  if(salida_control<0)//si el rival aparecio por la izquierda.
+ {
+    motores(velocidad_BASE, velocidad_BASE+salida_control);
   }
-
-  Serial.print("POS: ");
-  Serial.print(posicion);
-
-  Serial.print(" ERR: ");
-  Serial.print(proporcional);
-
-  Serial.print(" P: ");
-  Serial.print(proporcional * kp);
-
-  Serial.print(" D: ");
-  Serial.print(derivativo * kd);
-
-  Serial.print(" PID: ");
-  Serial.print(salida_control);
-
-  Serial.print(" IZQ: ");
-
-  if (salida_control < 0)
-    Serial.print(velocidad_BASE);
-  else
-    Serial.print(velocidad_BASE - salida_control);
-
-  Serial.print(" DER: ");
-
-  if (salida_control < 0)
-    Serial.println(velocidad_BASE + salida_control);
-  else
-    Serial.println(velocidad_BASE);
-
+  if(salida_control>0)//si el rival aparecio por la derecha.
+  {
+     motores(velocidad_BASE-salida_control , velocidad_BASE);
+  }
+   if(salida_control==0)//si el rival esta de frente.
+  {
+     motores(velocidad_BASE , velocidad_BASE);
+  }
+  Serial.println(salida_control);
+  proporcional_pasado=proporcional;
+  
+ 
 }
 void sensores(){
   //s3 = derecha
   //s2 = centro
   //s1 = izqueirda
-  s3 = !digitalRead(d80_1);
-  s2 = !digitalRead(js200xf);
-  s1 = !digitalRead(d80_2);
+  s3 = digitalRead(d80_1);
+  s2 = digitalRead(js200xf);
+  s1 = digitalRead(d80_2);
 }
 int ponderacion(){
-  int sensores_values[3];
-
+  int i = 0;
   long avg = 0;
   long sum = 0;
-
-  bool rival = false;
+  int on_line = 0; // es una variable pasar saber si se detecta el rival en los sensores. 
 
   sensores();
 
-  sensores_values[0] = s3;
-  sensores_values[1] = s2;
-  sensores_values[2] = s1;
+  sensores_values[0] = s1; // sensor izquierdo
+  sensores_values[1] = s2; // sensor central
+  sensores_values[2] = s3; // sensor derecho
 
-  for(int i = 0; i < 3; i++){
+  for(i=0; i< num_Sensors; i++ ){
     int value = sensores_values[i];
-
-    if(value > 0){
-      rival = true;
-    /*i = 0 -> izquierda -> 20
-      i = 1 -> centro -> 10
-      i = 2 -> izquierda -> 0*/
-      avg += (long)value * ((2 -i) * 10);
-      sum += value;
+    if(value> 0){
+      on_line = 1;
+    }
+    avg += (long)(value)*(i*10);
+    sum += value; // suma la cantidad de sensores activos.
+  }
+  if(!on_line){
+    if(last_value < 10){
+      return 0;
+    } else {
+      return 20;
     }
   }
-
-  if(!rival){
-    return last_value;
-  }
-  last_value = avg / sum;
+  last_value = avg / sum; // promedia el error.
   return last_value;
 }
-
 void motores(int velocidad_A, int velocidad_B) {
 
   velocidad_A = constrain(velocidad_A, -255, 255);
@@ -428,8 +425,8 @@ void Sentido_Motor() {
   digitalWrite(RPWM_izq, LOW);
   delay(1000);
 }
-
 void test_sensores() {
+  leds();
   int deteccionIzq = digitalRead(d80_1);
   int deteccionCen = digitalRead(js200xf);
   int deteccionDer = digitalRead(d80_2);
