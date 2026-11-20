@@ -3,14 +3,22 @@
 ----------------------------------------------------------------*/
 #include <IRremote.h>
 
-#define boton_ON 0x1CE348B7
-#define boton_OFF 0x1CE3C837
-#define boton1 0x1CE39867  // Estrategia 1: ATAQUE
-#define boton2 0x1CE330CF  // Estrategia 2: PID
-#define boton3 0x1CE38877  // Estrategia 3: SENTIDO_MOTOR
-#define boton4 0x1CE3807F  // Estrategia 4: TEST
+#define boton_ON 0xFFA25D
+#define boton_OFF 0xFF629D
+#define boton1 0xFF30CF  // Estrategia 1: ATAQUE
+#define boton2 0xFF18E7  // Estrategia 2: PID
+#define boton3 0xFF7A85  // Estrategia 3: SENTIDO_MOTOR
+#define boton4 0xFF10EF  // Estrategia 4: TEST
 #define boton5 0x1CE5320F  // Salida izquierda
 #define boton6 0x1C325481  // Salida derecha
+/*
+#define boton_ON 0xFFA25D  // encendido
+#define boton_OFF 0xFF629D  // apagado
+#define boton1 0xFF30CF    // estrategia 1
+#define boton2 0xFF18E7    // estrategia 2
+#define boton3 0xFF7A85    // estrategia 3
+#define boton4 0xFF10EF  
+*/
 
 int led1 = 4;
 int led2 = 12;
